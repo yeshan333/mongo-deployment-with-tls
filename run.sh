@@ -51,5 +51,5 @@ for deployment in ${TARGET_DEPLOYMENTS[@]}
 do
   setup_deployment $deployment
   run_test
-  # clean_up $deployment
+  clean_up
 done

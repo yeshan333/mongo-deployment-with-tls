@@ -1,8 +1,8 @@
 sharding:
-    clusterRole: shardsvr
+  clusterRole: shardsvr
 
 replication:
-    replSetName: shard_a_repl
+  replSetName: shard_a_repl
 
 storage:
   dbPath: build/shard_a_repl/mongodata_primary
@@ -16,24 +16,22 @@ systemLog:
 
 # network interfaces
 net:
-   tls:
-      mode: requireTLS
-      CAFile: mkcert/CA.pem
-      certificateKeyFile: mongo-tls.pem
-      clusterFile: mongo-tls-client.pem # clusterFile 是一个客户端证书https://www.mongodb.com/docs/manual/tutorial/configure-ssl/#member-certificate-requirements
-      allowConnectionsWithoutCertificates: true
-net:
+  tls:
+    mode: requireTLS
+    CAFile: mkcert/CA.pem
+    certificateKeyFile: mongo-tls.pem
+    clusterFile: mongo-tls-client.pem # https://www.mongodb.com/docs/manual/tutorial/configure-ssl/#member-certificate-requirements
+    allowConnectionsWithoutCertificates: true
   port: 37017
-  bindIp: 127.0.0.1
+  bindIp: localhost,127.0.0.1
   compression:
     compressors: zlib
 
-
 # how the process runs
 processManagement:
+  fork: true
   timeZoneInfo: /usr/share/zoneinfo
-
 
 # https://www.mongodb.com/docs/manual/tutorial/configure-x509-member-authentication/
 security:
-   clusterAuthMode: x509
+  clusterAuthMode: x509

@@ -1,7 +1,9 @@
-# MongoDB Deployment in localhost with TLS
+# MongoDB Deployments in localhost with TLS
+
+Demonstration of deploying a MongoDB server with TLS authentication enabled on a single node.
 
 Reqiure:
-- MongoDB Server
+- MongoDB Server 5.0+
 - mkcert
 
 ## Quick Start
@@ -21,8 +23,9 @@ Topology: [https://www.mongodb.com/docs/manual/images/replica-set-read-write-ope
 
 ![https://www.mongodb.com/docs/manual/images/replica-set-read-write-operations-primary.bakedsvg.svg](https://www.mongodb.com/docs/manual/images/replica-set-read-write-operations-primary.bakedsvg.svg)
 
-## MongoDB Sharding Cluster 【TODO】
+## MongoDB Sharding Cluster
 
 ```shell
 bash run.sh ShardingCluster
 ```
+

@@ -1,36 +1,55 @@
-# Manage MongoDB Shard Cluster
-# config_shard_repl_primary: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_config_shard/mongo_cfg_primary.yml"
-# config_shard_repl_secondary_a: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_config_shard/mongo_cfg_secondary_a.yml"
-# config_shard_repl_secondary_b: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_config_shard/mongo_cfg_secondary_b.yml"
-
-# mongo_shard_a_repl_primary: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_shard_a/mongo_cfg_primary.yml"
-# mongo_shard_a_repl_secondary_a: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_shard_a/mongo_cfg_secondary_a.yml"
-# mongo_shard_a_repl_secondary_b: mongod --config "$ROOT/examples/mongo_auth/etc/mongo_shard_a/mongo_cfg_secondary_b.yml"
-
-# mongos_a: mongos --config "$ROOT/examples/mongo_auth/etc/mongos/mongos_a_cfg.yml"
-# mongos_b: mongos --config "$ROOT/examples/mongo_auth/etc/mongos/mongos_b_cfg.yml"
-
+prepare_certs() {
+  # ref: https://www.doppler.com/blog/how-to-configure-mongodb-5-for-tlsssl-connections-on-debianubuntu
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/mkcert
+  export CAROOT=$ROOT/deployments/$CURRENT_DEPLOYMENT/mkcert
+  mkcert -install
+  cat mkcert/rootCA.pem mkcert/rootCA-key.pem > mkcert/CA.pem
+  # Generate Server Certificate
+  mkcert -cert-file mongo-tls.crt -key-file mongo-tls.key localhost 127.0.0.1 ::1
+  # Generage Client Certificate
+  mkcert -client -cert-file mongo-tls-client.crt -key-file mongo-tls-client.key localhost 127.0.0.1 ::1
+  
+  # MongoDB Server Certificate
+  cat mongo-tls.crt mongo-tls.key > mongo-tls.pem
+  # MongoDB Client Certificate、ReplicaSet member Certificate
+  cat mongo-tls-client.crt mongo-tls-client.key > mongo-tls-client.pem
+}
 
 clean_up() {
-    echo "Cleaning up MongoDB Sharding Cluster..."
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_b.pid
+
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_primary.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_b.pid
+  
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_primary.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_b.pid
+
+  echo "Cleaning up MongoDB Sharding Cluster..."
 }
 
 run_test() {
-    echo "Running MongoDB Sharding Cluster test..."
+  echo "Running MongoDB Sharding Cluster test..."
+  mongo --port 27011 --tls --username mongo_super_user --password mongo_super_user_pwd <<EOF
+show dbs;
+
+quit();
+EOF
 }
 
 check_mongo_ports() {
   host="127.0.0.1"
-  ports=("27011" "27012" "27017" "37017")
-  for port in "${ports[@]}"; do
-    if nc -z "$host" "$port"; then
-        echo "Mongo Port $port on $host is open."
-    else
-      # mongod、mongos need standby
-      return 0
-    fi
-  done
-  return 1
+  port=$1
+  if nc -z "$host" "$port"; then
+    echo "Mongo Port $port on $host is open."
+    return 0
+  else
+    # mongod、mongos need standby
+    echo "Mongo Port $port on $host is not open."
+    return 1
+  fi
 }
 
 ensure_mongo_ports_are_ready() {
@@ -39,7 +58,7 @@ ensure_mongo_ports_are_ready() {
   interval=1 # check interval seconds
 
   for ((i=0; i<timeout; i++)); do
-    check_mongo_ports
+    check_mongo_ports $1
     result=$?
     if [ $result -ne 1 ]; then
       break
@@ -53,10 +72,9 @@ ensure_mongo_ports_are_ready() {
   fi
 }
 
-check_mongos_shard_status() {
-
-# Cluster Member enable X503 authenticate, need auth access for db
-mongo --port 27011 --tls <<EOF
+prepare_mongo_shard() {
+  # Cluster Member enable X503 authenticate, need auth access for db
+  mongo --port 27011 --tls <<EOF
 use admin
 db.createUser(
   {
@@ -71,55 +89,32 @@ db.createUser(
 )
 EOF
 
-# add sharding
-mongo --port 27011 --tls --username mongo_super_user --password mongo_super_user_pwd <<EOF
+  # add sharding
+  mongo --port 27011 --tls --username mongo_super_user --password mongo_super_user_pwd <<EOF
 sh.addShard( "shard_a_repl/127.0.0.1:37017,127.0.0.1:37018,127.0.0.1:37019")
 EOF
-mongo --port 27012 --tls --username mongo_super_user --password mongo_super_user_pwd <<EOF
+  mongo --port 27012 --tls --username mongo_super_user --password mongo_super_user_pwd <<EOF
 sh.addShard( "shard_a_repl/127.0.0.1:37017,127.0.0.1:37018,127.0.0.1:37019")
 EOF
 
-# make sure sharded cluster status
-mongo --port 27011 --tls --username mongo_super_user --password mongo_super_user_pwd < etc/check_mongo_sharding_cluster.js || exit 1
+  # make sure sharded cluster status
+  mongo --port 27011 --tls --username mongo_super_user --password mongo_super_user_pwd < $ROOT/scripts/check_sharded_cluster.js || exit 1
 }
 
-launch() {
-    echo "Launching MongoDB Sharding Cluster..."
+startup_config_shard() {
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_primary.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_b.pid
+  rm -rf $ROOT/deployments/$CURRENT_DEPLOYMENT/build/config_shard_repl
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/config_shard_repl/mongodata_primary
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/config_shard_repl/mongodata_secondary_a
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/config_shard_repl/mongodata_secondary_b
 
- # # https://www.mongodb.com/docs/manual/tutorial/deploy-replica-set-with-keyfile-access-control/#deploy-new-replica-set-with-keyfile-access-control
-  # openssl rand -base64 756 > replica_set_keyfile
-  # chmod 400 replica_set_keyfile
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_config_shard/mongo_cfg_primary.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_primary.pid &
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_config_shard/mongo_cfg_secondary_a.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_a.pid &
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_config_shard/mongo_cfg_secondary_b.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_config_shard_secondary_b.pid &
 
-  rm -rf $ROOT/examples/$CURRENT_EXAMPLE/*.log
-  rm -rf $ROOT/examples/$CURRENT_EXAMPLE/build/config_shard_repl
-  rm -rf $ROOT/examples/$CURRENT_EXAMPLE/build/shard_a_repl
-
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/config_shard_repl/mongodata_primary
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/config_shard_repl/mongodata_secondary_a
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/config_shard_repl/mongodata_secondary_b
-
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/shard_a_repl/mongodata_primary
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/shard_a_repl/mongodata_secondary_a
-  mkdir -p $ROOT/examples/$CURRENT_EXAMPLE/build/shard_a_repl/mongodata_secondary_b
-
-  sleep 3s
-  export ROOT=$ROOT
-  goreman -f $ROOT/examples/$CURRENT_EXAMPLE/Procfile check
-  goreman -b 11855 -f $ROOT/examples/$CURRENT_EXAMPLE/Procfile start &
-  echo $! > goreman_process.pid
-  disown $(cat goreman_process.pid)
-
-  sleep 5s
-  goreman -f $ROOT/examples/$CURRENT_EXAMPLE/Procfile run status
-
-  ensure_mongo_ports_are_ready
-  status=$?
-  if [ $status -ne 0 ]; then
-    # if failed start again
-    goreman -b 11855 -f $ROOT/examples/$CURRENT_EXAMPLE/Procfile run restart-all
-    ensure_mongo_ports_are_ready
-  fi
-
+  ensure_mongo_ports_are_ready 27017
   mongo --port 27017 --tls <<EOF
 db.adminCommand({replSetInitiate: { 
   _id: "config_shard_repl", 
@@ -133,8 +128,24 @@ db.adminCommand({replSetInitiate: {
 }})
 EOF
 
-  mongo --port 27017 --tls < etc/check_replica_set.js || exit 1
+  mongo --port 27017 --tls < $ROOT/scripts/check_replicaset_status.js || exit 1
+}
 
+startup_shard_a() {
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_primary.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_b.pid
+
+  rm -rf $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_primary
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_secondary_a
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_secondary_b
+
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_shard_a/mongo_cfg_primary.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_primary.pid &
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_shard_a/mongo_cfg_secondary_a.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_a.pid &
+  mongod --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongo_shard_a/mongo_cfg_secondary_b.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongo_shard_a_secondary_b.pid &
+
+  ensure_mongo_ports_are_ready 37017
   mongo --port 37017 --tls <<EOF
 db.adminCommand({replSetInitiate: { 
   _id: "shard_a_repl", 
@@ -148,7 +159,34 @@ db.adminCommand({replSetInitiate: {
 }})
 EOF
 
-  mongo --port 37017 --tls < etc/check_replica_set.js || exit 1
+  mongo --port 37017 --tls < $ROOT/scripts/check_replicaset_status.js || exit 1
+}
 
-  check_mongos_shard_status
+startup_mongos() {
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_a.pid
+  kill_if_file_exists $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_b.pid
+
+  mongos --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongos/mongos_a_cfg.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_a.pid &
+  mongos --config "$ROOT/deployments/$CURRENT_DEPLOYMENT/etc/mongos/mongos_b_cfg.yaml" --pidfilepath $ROOT/deployments/$CURRENT_DEPLOYMENT/mongos_b.pid &
+
+  ensure_mongo_ports_are_ready 27011
+  ensure_mongo_ports_are_ready 27012
+}
+
+launch() {
+  rm -rf $ROOT/deployments/$CURRENT_DEPLOYMENT/build
+  rm -rf $ROOT/deployments/$CURRENT_DEPLOYMENT/logs
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/logs
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build
+
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_primary
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_secondary_a
+  mkdir -p $ROOT/deployments/$CURRENT_DEPLOYMENT/build/shard_a_repl/mongodata_secondary_b
+
+  prepare_certs
+
+  startup_config_shard
+  startup_shard_a
+  startup_mongos
+  prepare_mongo_shard
 }
