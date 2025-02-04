@@ -1,0 +1,39 @@
+sharding:
+  clusterRole: configsvr
+
+replication:
+    replSetName: config_shard_repl
+
+storage:
+  dbPath: build/config_shard_repl/mongodata_primary
+
+# where to write logging data.
+systemLog:
+  destination: file
+  logAppend: true
+  path: logs/config_shard_repl_mongod_primary.log
+  verbosity: 0
+
+# network interfaces
+net:
+   tls:
+      mode: requireTLS
+      CAFile: mkcert/CA.pem
+      certificateKeyFile: mongo-tls.pem
+      clusterFile: mongo-tls-client.pem # clusterFile 是一个客户端证书https://www.mongodb.com/docs/manual/tutorial/configure-ssl/#member-certificate-requirements
+      allowConnectionsWithoutCertificates: true
+net:
+  port: 27017
+  bindIp: 127.0.0.1
+  compression:
+    compressors: zlib
+
+
+# how the process runs
+processManagement:
+  timeZoneInfo: /usr/share/zoneinfo
+
+
+# https://www.mongodb.com/docs/manual/tutorial/configure-x509-member-authentication/
+security:
+   clusterAuthMode: x509

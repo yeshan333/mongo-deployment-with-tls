@@ -1,0 +1,22 @@
+# network interfaces
+net:
+   tls:
+      mode: requireTLS
+      CAFile: mkcert/CA.pem
+      certificateKeyFile: mongo-tls.pem
+      clusterFile: mongo-tls-client.pem # clusterFile 是一个客户端证书https://www.mongodb.com/docs/manual/tutorial/configure-ssl/#member-certificate-requirements
+      allowConnectionsWithoutCertificates: true
+net:
+  port: 27011
+  bindIp: 127.0.0.1,localhost
+sharding:
+  configDB: config_shard_repl/127.0.0.1:27017,127.0.0.1:27018,127.0.0.1:27019
+systemLog:
+  destination: file
+  logAppend: true
+  path: logs/mongos_a.log
+  verbosity: 0
+
+# https://www.mongodb.com/docs/manual/tutorial/configure-x509-member-authentication/
+security:
+   clusterAuthMode: x509
