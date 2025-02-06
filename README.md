@@ -1,5 +1,7 @@
 # MongoDB Deployments in localhost with TLS
 
+![banner.png](./banner.png)
+
 Demonstration of deploying a MongoDB server with TLS authentication enabled on a single node.
 
 Reqiure:
@@ -29,3 +31,6 @@ Topology: [https://www.mongodb.com/docs/manual/images/replica-set-read-write-ope
 bash run.sh ShardingCluster
 ```
 
+Topology:
+
+![[https://www.mongodb.com/docs/manual/static/1112d075b61fb59a49076c865c6e8f60/bde8a/sharded-cluster-production-architecture.webp](https://www.mongodb.com/docs/manual/static/1112d075b61fb59a49076c865c6e8f60/bde8a/sharded-cluster-production-architecture.webp)](https://www.mongodb.com/docs/manual/static/1112d075b61fb59a49076c865c6e8f60/bde8a/sharded-cluster-production-architecture.webp)

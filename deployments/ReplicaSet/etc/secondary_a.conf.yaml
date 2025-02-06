@@ -31,5 +31,5 @@ processManagement:
 
 # Member x.509 Certificate
 # https://www.mongodb.com/docs/manual/tutorial/configure-x509-member-authentication/
-# security:
-#   clusterAuthMode: x509
+security:
+  clusterAuthMode: x509
